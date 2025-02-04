@@ -35,3 +35,9 @@ logs/
 
 # Docker
 .docker/ 
+
+# Other
+test*
+.venv/
+venv/
+.pytest_cache/

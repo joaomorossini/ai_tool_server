@@ -1,29 +1,38 @@
-from fastapi import FastAPI, Depends, HTTPException, Security
-from fastapi.security.api_key import APIKeyHeader
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
-from typing import Annotated
-import os
 from datetime import datetime
+import os
+from dotenv import load_dotenv
+from typing import Optional
 
-from .config import Settings
-
-# Initialize settings
-settings = Settings()
+# Load environment variables
+load_dotenv()
 
 # Configure logger
+log_dir = os.getenv("LOG_DIR", "logs")
+os.makedirs(log_dir, exist_ok=True)
 logger.add(
-    f"logs/tool_server_{datetime.now().strftime('%Y%m%d')}.log",
+    f"{log_dir}/tool_server_{datetime.now().strftime('%Y%m%d')}.log",
     rotation="500 MB",
-    level="INFO"
+    level=os.getenv("LOG_LEVEL", "INFO")
 )
 
-# Initialize FastAPI app
+# Get environment variables with defaults
+PORT = int(os.getenv("FASTAPI_PORT", os.getenv("PORT", "8000")))
+HOST = os.getenv("HOST", "0.0.0.0")
+SERVER_URL = os.getenv("FASTAPI_BASE_URL", os.getenv("SERVER_URL", f"http://{HOST}:{PORT}"))
+
+# Initialize FastAPI app with OpenAPI 3.1.1 compatibility
 app = FastAPI(
     title="AI Tool Server",
     description="API server for AI agent tools",
     version="1.0.0",
-    openapi_version="3.1.1"
+    openapi_version="3.1.1",
+    root_path=SERVER_URL,
+    openapi_url="/openapi.json",
+    docs_url="/docs",
+    redoc_url="/redoc"
 )
 
 # Configure CORS
@@ -35,40 +44,35 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# API Key authentication
-# api_key_header = APIKeyHeader(name="X-API-Key")
-
-# Remove the verify_api_key function
-# async def verify_api_key(api_key: Annotated[str, Security(api_key_header)]):
-#     """Verify the API key against the configured value."""
-#     if api_key != settings.api_key:
-#         logger.warning(f"Invalid API key attempt: {api_key[:10]}...")
-#         raise HTTPException(
-#             status_code=403,
-#             detail="Invalid API key"
-#         )
-#     return api_key
-
 @app.get("/health")
-async def health_check():
-    """Health check endpoint."""
+async def health_check() -> dict:
+    """
+    Health check endpoint to verify the server status.
+    
+    Returns:
+        dict: A dictionary containing the server status and current timestamp
+    """
     return {"status": "healthy", "timestamp": datetime.now().isoformat()}
 
 @app.get("/")
-async def root():
-    """Root endpoint without authentication."""
+async def root() -> dict:
+    """
+    Root endpoint providing basic server information.
+    
+    Returns:
+        dict: A welcome message
+    """
     return {"message": "Welcome to the AI Tool Server"}
 
 # Import and include routers
-# from .routers import tools
-# app.include_router(tools.router, prefix="/tools", tags=["tools"])
+from .routes import list_tables_tool
+app.include_router(list_tables_tool.router, prefix="/api", tags=["list_tables_tool"])
 
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(
-        "main:app",
-        host="0.0.0.0",
-        port=8000,
-        reload=True,
-        workers=4
+        "app.main:app",
+        host=HOST,
+        port=PORT,
+        reload=True
     ) 
